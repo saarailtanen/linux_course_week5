@@ -16,3 +16,10 @@ a:hover { background: #ffd1e8; border-radius: 6px; }
 .chat-form button { padding: 0.6rem 1.4rem; background: #ff69b4; color: white; border: none; border-radius: 999px; font: inherit; font-weight: 700; cursor: pointer; }
 .chat-form button:disabled { opacity: 0.5; cursor: wait; }
 .status { color: #e0559c; min-height: 1.4rem; font-size: 0.95rem; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; margin: 0.8rem 0; border: 2px solid #ffb6d9; border-radius: 14px; overflow: hidden; }
+th { background: #ffd1e8; }
+td, th { border-bottom: 1px solid #ffd1e8; padding: 6px 10px; text-align: left; vertical-align: top; font-size: 0.95rem; }
+tr:last-child td { border-bottom: none; }
+pre { background: #fff0f7; border: 1px solid #ffd1e8; border-radius: 12px; padding: 0.7rem 1rem; overflow-x: auto; font-size: 0.8rem; }
+code { background: #fff0f7; border-radius: 6px; padding: 1px 6px; }
+.flow { text-align: center; font-weight: 700; color: #d6247f; background: #ffe4f1; border-radius: 20px; padding: 0.5rem 1rem; }

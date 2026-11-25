@@ -170,3 +170,11 @@ def test_sessions_are_separate(client):
     second = client.get('/api/history/session-bbbb-2').get_json()
     assert first == [{'role': 'user', 'content': 'first'}]
     assert second == [{'role': 'user', 'content': 'second'}]
+
+def test_docs_page(client):
+    resp = client.get('/docs')
+    assert resp.status_code == 200
+    assert b'Request path' in resp.data
+
+def test_deliberate_failure_demo():
+    assert 1 + 1 == 3

@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 import requests
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request, send_from_directory
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
@@ -37,6 +37,10 @@ def _ndjson(obj):
 def index():
     return render_template('index.html', model=OLLAMA_MODEL)
 
+@app.get('/docs')
+def docs():
+    # A plain HTML file, served as it is (no template processing)
+    return send_from_directory(Path(app.root_path) / 'templates', 'docs.html')
 
 @app.get('/health')
 def health():
