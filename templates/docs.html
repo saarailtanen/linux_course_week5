@@ -14,78 +14,120 @@
   <ul>
     <li>Chat: <a href='http://193.166.25.66/viikko5/'>http://193.166.25.66/viikko5/</a></li>
     <li>Repository: <a href='https://github.com/saarailtanen/linux_course_week5'>https://github.com/saarailtanen/linux_course_week5</a></li>
-    <li>Workflow runs: <a href='https://github.com/saarailtanen/linux_course_week5/actions'>Actions tab</a></li>
+    <li>Workflow runs: <a href='https://github.com/saarailtanen/linux_course_week5/actions'>Actions tab of the repository</a></li>
+    <li>Health endpoint (returns the Git commit SHA of the running version): <a href='http://193.166.25.66/viikko5/health'>http://193.166.25.66/viikko5/health</a></li>
   </ul>
 
   <h2>Request path</h2>
   <p class='flow'>Browser &rarr; Nginx (port 80) &rarr; Unix socket &rarr; Gunicorn + Flask &rarr; Ollama / MariaDB</p>
-  <p>The browser sends every request to Nginx on port 80. The <code>/viikko5/</code> location removes the prefix and passes the request over the Unix socket <code>/run/chatapp/gunicorn.sock</code> to Gunicorn, which runs the Flask app. Flask reads and writes the conversation in MariaDB (127.0.0.1:3306, database chatapp) and sends the messages to Ollama (127.0.0.1:11434), streaming the model reply back token by token. Ollama and the app listen only on localhost or on the socket; the only public ports are 80 and 22.</p>
+  <p>The browser sends every request to Nginx on port 80. The <code>/viikko5/</code> location removes the prefix and passes the request over the Unix socket <code>/run/chatapp/gunicorn.sock</code> to Gunicorn, which runs the Flask app. Flask reads and writes the conversation in MariaDB (127.0.0.1:3306, database <code>chatapp</code>) and sends the messages to Ollama (127.0.0.1:11434), which runs the language model locally on the same server. The reply is streamed back token by token. Ollama listens only on localhost and the app only on the socket, so the only public ports of the server are 80 (HTTP) and 22 (SSH).</p>
 
-  <h2>Pipeline</h2>
+  <h2>Pipeline (GitHub Actions)</h2>
   <ul>
-    <li><b>Pull requests and every push:</b> ruff lint, pytest (Ollama and MariaDB are mocked, so no model or production database is needed) and a syntax check of the shell scripts.</li>
-    <li><b>Push to main:</b> the same checks; only if they pass, a second job deploys. rsync copies the code to /opt/chatapp/app, deploy.sh installs the dependencies, applies the database schema, installs the Nginx snippet (nginx -t first, the old snippet is restored if it fails), restarts only the chatapp service and checks the version.</li>
-    <li><b>Verification:</b> deploy.sh asks Gunicorn through the socket which commit it is running, and the workflow then requires /viikko5/health to return the commit SHA of the run (github.sha). A mismatch fails the workflow.</li>
-    <li><b>Failing tests:</b> the deploy job has needs: test, so a red test job means no deployment. Failed run: <a href='PASTE_FAILED_RUN_URL'>PASTE_FAILED_RUN_URL</a></li>
+    <li><b>Pull requests and every push:</b> the job <i>Lint and tests</i> runs ruff (lint), pytest and a syntax check of the shell scripts. The tests replace Ollama and MariaDB with fakes, so they need neither the model nor the production database.</li>
+    <li><b>Push to main:</b> the same checks run first. Only if they pass, the job <i>Deploy to cPouta</i> runs (it has <code>needs: test</code>). It copies the code with rsync to <code>/opt/chatapp/app</code>, runs <code>deploy.sh</code> on the server, and then makes a public smoke test.</li>
+    <li><b>What deploy.sh does:</b> installs the Python dependencies into a virtual environment, writes the commit SHA of the run into a <code>REVISION</code> file, applies the database schema, installs the Nginx snippet (<code>nginx -t</code> first; the old snippet is restored if the test fails), and restarts only the <code>chatapp</code> service. Other services are not touched.</li>
+    <li><b>How a deployment is verified:</b> <code>deploy.sh</code> asks Gunicorn through the socket which commit it is running. The workflow then requires <code>/viikko5/health</code> to return exactly the commit SHA of the run (<code>github.sha</code>). The value comes from the deployment, it is not written by hand. A mismatch fails the workflow.</li>
+    <li><b>A failing test is not deployed:</b> if the test job is red, the deploy job is skipped. Failed run: <a href='PASTE_FAILED_RUN_URL'>PASTE_FAILED_RUN_URL</a></li>
   </ul>
+
+  <h2>Deployments</h2>
+  <table>
+    <tr><th>#</th><th>Commit (returned by /viikko5/health)</th><th>Workflow run</th></tr>
+    <tr><td>1</td><td><code>c914c20c296e39bda7e62d9333c5eb40b23ee73a</code></td><td><a href='https://github.com/saarailtanen/linux_course_week5/actions/runs/45592083363'>run 45592083363</a></td></tr>
+    <tr><td>2</td><td colspan='2'>PASTE_DEPLOY2: the SHA returned by /viikko5/health after the second deployment, and the address of its green run</td></tr>
+  </table>
 
   <h2>Users, permissions and secrets</h2>
   <table>
     <tr><th>Item</th><th>Details</th></tr>
-    <tr><td>Linux user chatapp</td><td>System user with shell /usr/sbin/nologin and no home directory. Runs the chatapp service (User=chatapp, Group=chatapp).</td></tr>
-    <tr><td>Linux user ubuntu</td><td>Deploy user. Owns /opt/chatapp; GitHub Actions logs in as this user with a dedicated SSH key.</td></tr>
-    <tr><td>/opt/chatapp/app</td><td>Owner ubuntu, directories 755 and files 644: the service can read the code but not change it.</td></tr>
-    <tr><td>/etc/chatapp/chatapp.env</td><td>Owner root, group chatapp, mode 640. Holds the database password and settings; readable only by root and the service user.</td></tr>
-    <tr><td>/run/chatapp/gunicorn.sock</td><td>Owned by chatapp, created by Gunicorn with umask 007. Nginx (www-data) is a member of group chatapp so it can use it (see the ls -l evidence below).</td></tr>
-    <tr><td>MariaDB user chatapp@localhost</td><td>Own database chatapp. Privileges: only SELECT and INSERT on chatapp.*. The password is random and stored only in the env file.</td></tr>
-    <tr><td>GitHub secrets</td><td>CPOUTA_HOST, CPOUTA_USER, CPOUTA_SSH_KEY (a separate deploy key, not my personal key) and CPOUTA_KNOWN_HOSTS. Nothing secret is in the repository.</td></tr>
+    <tr><td>Linux user <code>chatapp</code></td><td>System user (uid 999) with the shell <code>/usr/sbin/nologin</code> and no home directory. It runs the <code>chatapp</code> service (<code>User=chatapp</code>, <code>Group=chatapp</code>).</td></tr>
+    <tr><td>Linux user <code>ubuntu</code></td><td>Deploy user. It owns <code>/opt/chatapp</code>. GitHub Actions logs in as this user with a dedicated SSH key.</td></tr>
+    <tr><td><code>/opt/chatapp/app</code></td><td>Owner ubuntu. rsync sets directories to 755 and files to 644, so the service can read the code but not change it.</td></tr>
+    <tr><td><code>/etc/chatapp/chatapp.env</code></td><td><code>-rw-r----- 1 root chatapp</code>: owner root, group chatapp, mode 640. It holds the database password and the settings, so only root and the service user can read it. It is not in the repository.</td></tr>
+    <tr><td><code>/run/chatapp/gunicorn.sock</code></td><td><code>srwxrwx--- 1 chatapp chatapp</code>: the Unix socket is owned by chatapp and has mode 770. Nginx runs as www-data, which is a member of the group chatapp, so it can use the socket.</td></tr>
+    <tr><td>MariaDB user <code>chatapp</code>@localhost</td><td>Own database <code>chatapp</code>. Privileges: only <code>SELECT, INSERT</code> on <code>chatapp</code>.* (the schema is applied by root during the deployment). The password is random and stored only in the env file.</td></tr>
+    <tr><td>GitHub Actions secrets</td><td><code>CPOUTA_HOST</code>, <code>CPOUTA_USER</code>, <code>CPOUTA_SSH_KEY</code> (a separate deploy key, not my personal key) and <code>CPOUTA_KNOWN_HOSTS</code> (the server's host key). No secret is in the repository.</td></tr>
   </table>
 
   <h2>SSH access for GitHub Actions</h2>
-  <p>GitHub runners connect from changing IP addresses, so port 22 is open to 0.0.0.0/0 in the cPouta security group (this rule was already in place from the earlier weeks, so I did not need to change the security group). Password login is disabled (sshd -T reports passwordauthentication no and pubkeyauthentication yes), so only key login works. The risks: sshd is reachable from the whole internet, and the deploy key gives a shell as ubuntu with sudo, so it must never leak. The private key exists only as a GitHub secret and in my own .ssh folder, and it can be revoked by deleting its line from authorized_keys.</p>
+  <p>GitHub runners connect from changing IP addresses, so a rule that allows only my own IP would block them. Port 22 was already open to 0.0.0.0/0 in the cPouta security group from the earlier weeks, so I did not need to change the security group. The server accepts only key login: <code>sshd -T</code> reports <code>passwordauthentication no</code> and <code>pubkeyauthentication yes</code>. The security implications of this choice: sshd is reachable from the whole internet, so only the keys protect it; the deploy key logs in as ubuntu, which has sudo, so a leaked key would give full control of the server. The private key exists only as a GitHub secret and in my own <code>.ssh</code> folder, outside the repository, and it can be revoked by deleting its line from <code>authorized_keys</code> on the server.</p>
 
   <h2>How /viikko5/ was added to Nginx</h2>
-  <p>The repository contains only a snippet with location blocks and no server block. I added one line, include snippets/chatapp.conf;, inside the server block of the existing site, and deploy.sh keeps the snippet itself up to date; the deployment never edits the site file. The ^~ modifier keeps the site's regex locations from catching /viikko5/ requests. Gunicorn uses a Unix socket, so it cannot clash with the Week 2 app that already uses port 8000. I checked the earlier pages after every deployment and they stayed at their URLs.</p>
+  <p>The repository contains only a snippet with <code>location</code> blocks and no <code>server</code> block. I added one line, <code>include snippets/chatapp.conf;</code>, inside the server block of the existing site (<code>/etc/nginx/sites-enabled/default</code>), after making a backup copy of the file. <code>deploy.sh</code> keeps the snippet file itself up to date and never edits the site file. The <code>^~</code> modifier on the locations keeps the site's regex locations from catching <code>/viikko5/</code> requests. Gunicorn uses a Unix socket, so it cannot clash with the Week 2 app, which already uses port 8000. The Week 2 page at the root of the server still answers after the change and after every deployment.</p>
+  <pre>$ sudo nginx -t
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+
+$ grep -n -B2 -A2 'snippets/chatapp' /etc/nginx/sites-enabled/default
+2-    listen 80 default_server;
+3-    server_name _;
+4:include snippets/chatapp.conf;
+5-
+6-    location / {
+
+$ curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/
+200</pre>
 
   <h2>Model and server resources</h2>
-  <p>Model: qwen2.5:0.5b (about 400 MB; the exact size is in the ollama list output below). Swap: the server has only 937 MiB of RAM and had no swap, so I added a 2 GB swap file (/swapfile, created with fallocate, mkswap and swapon, and an entry in /etc/fstab so it survives a reboot). The server is a cloud virtual machine without a GPU: Ollama printed the warning No NVIDIA/AMD GPU detected and runs in CPU-only mode, so replies are slower and I chose a small model. I develop and run the local checks (ruff and pytest) on my Windows laptop, but the model runs only on server A.</p>
-  <pre>Before the changes (Phase 0):
+  <p>Model: <code>qwen2.5:0.5b</code>, 397 MB (shown by <code>ollama list</code>). The server (server A, a cPouta virtual machine) has only 937 MiB of RAM, so a larger model would not fit. It has no GPU: the Ollama installer printed the warning "No NVIDIA/AMD GPU detected. Ollama will run in CPU-only mode", so replies are slower, especially the first one after a start, when the model is loaded into memory. Because there was no swap, I added a 2 GB swap file (<code>/swapfile</code>, created with fallocate, mkswap and swapon, and an entry in <code>/etc/fstab</code> so it survives a reboot). I develop the application and run the local checks (ruff and pytest) on my Windows laptop; the model runs only on server A.</p>
+  <pre>Before the changes:
                total        used        free      shared  buff/cache   available
 Mem:           937Mi       456Mi       243Mi       4.1Mi       412Mi       481Mi
 Swap:             0B          0B          0B
 Filesystem      Size  Used Avail Use% Mounted on
-/dev/vda1        77G  2.8G   74G   4% /
-
-After adding the 2 GB swap file:
-PASTE_FREE_AFTER_SWAP</pre>
+/dev/vda1        77G  2.8G   74G   4% /</pre>
+  <p>Memory and swap after the changes, with the model loaded, are in the evidence section below.</p>
 
   <h2>Week 4 and replication</h2>
-  <p>The chat is installed on server A, because the MariaDB on server B is a read-only replica and could not store messages. The chat database is not replicated to B: A's binlog_do_db lists only counterdb, so changes to chatapp are not written to the binary log, and B's replicate_do_db also lists only counterdb. The chat history therefore exists only on A. Replicating it would only be useful if B had to show the chat read-only, which it does not.</p>
+  <p>The chat is installed on server A, because the MariaDB on server B is a read-only replica and could not store messages. The chat database is not replicated to B: A's <code>binlog_do_db</code> lists only <code>counterdb</code>, so changes to <code>chatapp</code> are not written to the binary log, and B's <code>replicate_do_db</code> also lists only <code>counterdb</code>. The chat history therefore exists only on A. Replicating it would only be useful if B had to show the chat read-only, which it does not.</p>
 
   <h2>Test results</h2>
   <table>
     <tr><th>Test</th><th>Result</th></tr>
-    <tr><td>Chat page is public and the model replies</td><td>PASTE</td></tr>
-    <tr><td>History after reload; a new browser session starts empty</td><td>PASTE</td></tr>
-    <tr><td>Model and app server not reachable from the internet</td><td>PASTE</td></tr>
-    <tr><td>Two deployments of different commits</td><td>PASTE (SHA and run URL of each, and the health output)</td></tr>
-    <tr><td>Failing test is not deployed</td><td>PASTE</td></tr>
-    <tr><td>Reboot test</td><td>PASTE</td></tr>
-    <tr><td>Earlier weeks still work</td><td>PASTE</td></tr>
+    <tr><td>Chat page is public and the model replies</td><td>On 25 November 2026 I opened the page on a phone using mobile data and the local model (qwen2.5:0.5b) answered my message.</td></tr>
+    <tr><td>History after reload; a new browser session starts empty</td><td>After a reload the messages were still there. A private (incognito) window started with an empty conversation. The database shows three separate sessions, each with its own messages:
+<pre>+----------+-----------+------------------------------------+
+| session  | role      | content                            |
++----------+-----------+------------------------------------+
+| 92603cf7 | assistant | hello! How can I help you today?   |
+| 92603cf7 | user      | hello                              |
+| 29f98d04 | assistant | Hello! How can I assist you today? |
+| 29f98d04 | user      | hi                                 |
+| 4733853e | assistant | Hello! How can I assist you today? |
+| 4733853e | user      | hi                                 |
++----------+-----------+------------------------------------+</pre></td></tr>
+    <tr><td>Model server and app server are not reachable from the internet</td><td>On the server, Ollama listens only on 127.0.0.1:11434, and the chat has no TCP port at all, only the socket <code>/run/chatapp/gunicorn.sock</code> (<code>srwxrwx--- chatapp chatapp</code>). From my computer on a phone hotspot, <code>Test-NetConnection</code> to ports 11434 and 8000 reported <code>TcpTestSucceeded : False</code>. MariaDB listens on 0.0.0.0:3306 because the Week 4 replication needs it. Results from the internet for ports 3306 and 80: PASTE_PORTS
+<pre>LISTEN 0      2048       127.0.0.1:8000       0.0.0.0:*    users:(("gunicorn",pid=924,fd=3),("gunicorn",pid=903,fd=3))
+LISTEN 0      80           0.0.0.0:3306       0.0.0.0:*    users:(("mariadbd",pid=45257,fd=27))
+LISTEN 0      4096       127.0.0.1:11434      0.0.0.0:*    users:(("ollama",pid=68942,fd=3))</pre>
+(Port 8000 is the Week 2 app, which was already there.)</td></tr>
+    <tr><td>Two deployments of different commits</td><td>See the table of deployments above. After deployment 1, <code>/viikko5/health</code> returned c914c20c296e39bda7e62d9333c5eb40b23ee73a, which was the commit of that run.</td></tr>
+    <tr><td>A commit with a failing test is not deployed</td><td>I pushed a commit with a deliberately failing test (<code>test_deliberate_failure_demo</code>). The first run was stopped even earlier by the linter, which found a missing newline at the end of <code>test_app.py</code>. After fixing that, the test job failed at the pytest step and the deploy job was skipped. While my newest commit (f88a2fa9222f3db1e5583f02a97a42ffdc7b83d6) was not deployed, <code>/viikko5/health</code> still returned c914c20c296e39bda7e62d9333c5eb40b23ee73a. Failed run: <a href='PASTE_FAILED_RUN_URL'>PASTE_FAILED_RUN_URL</a>. I then removed the failing test and the pipeline deployed again.</td></tr>
+    <tr><td>Reboot test</td><td>I rebooted server A. Afterwards ollama, chatapp, mariadb and nginx were all active and enabled without any manual command, Ollama had a new process id (68942 before, 635 after), and the health endpoint answered with the commit SHA:
+<pre>systemctl is-active ollama chatapp mariadb nginx
+active
+active
+active
+active
+systemctl is-enabled ollama chatapp mariadb nginx
+enabled
+enabled
+enabled
+enabled
+sudo ss -ltnp | grep -E '11434|3306'
+LISTEN 0      4096       127.0.0.1:11434      0.0.0.0:*    users:(("ollama",pid=635,fd=3))
+LISTEN 0      80           0.0.0.0:3306       0.0.0.0:*    users:(("mariadbd",pid=794,fd=28))
+curl -s http://127.0.0.1/viikko5/health
+c914c20c296e39bda7e62d9333c5eb40b23ee73a</pre></td></tr>
+    <tr><td>Earlier weeks still work</td><td>The Week 2 page at <code>http://193.166.25.66/</code> returned HTTP 200 after the deployment and after the reboot. PASTE_WEEK4: the Week 4 replication status on server B and the last lines of the backup log on server A.</td></tr>
   </table>
 
   <h2>Evidence from the server</h2>
-  <h3>systemctl status and service user</h3>
-  <pre>PASTE_STATUS_OUTPUT</pre>
-  <h3>File ownership and permissions</h3>
-  <pre>PASTE_LS_OUTPUT</pre>
-  <h3>Database grants</h3>
-  <pre>PASTE_GRANTS_OUTPUT</pre>
-  <h3>Ollama and memory with the model loaded</h3>
-  <pre>PASTE_OLLAMA_AND_FREE_OUTPUT</pre>
-  <h3>Listening ports</h3>
-  <pre>PASTE_SS_OUTPUT</pre>
+  <p>Output of <code>systemctl status chatapp</code>, <code>systemctl show chatapp -p User -p Group</code>, <code>ls -l</code> of the application directory, the environment file and the socket, <code>SHOW GRANTS</code> (the password hash removed), <code>ollama list</code> and <code>ollama ps</code>, <code>free -h</code> with the model loaded, <code>df -h</code>, <code>swapon --show</code> and <code>sudo ss -ltnp</code>:</p>
+  <pre>PASTE_EVIDENCE_FILE</pre>
 
   <h2>One problem I solved</h2>
-<p>My first deployment failed after only 4 seconds, although the Lint and tests job was green. The log of the rsync step said <code>/home/runner/.ssh/config line 3: no argument after keyword "user"</code> and rsync exited with code 255. That showed the problem was not in the code but in how the workflow connects: it builds the SSH configuration from the GitHub secrets, and the <code>CPOUTA_USER</code> secret was empty, so the <code>User</code> line had no value. I re-entered the secret with the value ubuntu (GitHub never shows secret values again, so re-entering is the only way to check one) and re-ran the failed job without a new commit. The deployment went green and <code>/viikko5/health</code> returned the commit SHA. I learned to read the log of the exact failing step, and that a deploy that fails within seconds points at connection setup or secrets rather than at the application.</p></body>
+  <p>My first deployment failed after only 4 seconds, although the job <i>Lint and tests</i> was green. The log of the rsync step said <code>/home/runner/.ssh/config line 3: no argument after keyword "user"</code> and rsync exited with code 255. That showed that the problem was not in the code but in how the workflow connects: it builds the SSH configuration from the GitHub secrets, and the <code>CPOUTA_USER</code> secret had no usable value, so the <code>User</code> line was empty. I saved the secret again with the value ubuntu (GitHub never shows a secret value again, so saving it again is the only way to check it) and re-ran the failed job without a new commit. The deployment then went green and <code>/viikko5/health</code> returned the commit SHA. I learned to read the log of the exact failing step, and that a deployment that fails within seconds points to the connection setup or the secrets rather than to the application.</p>
+</body>
 </html>
