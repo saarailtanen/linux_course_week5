@@ -175,6 +175,3 @@ def test_docs_page(client):
     resp = client.get('/docs')
     assert resp.status_code == 200
     assert b'Request path' in resp.data
-
-def test_deliberate_failure_demo():
-    assert 1 + 1 == 3
