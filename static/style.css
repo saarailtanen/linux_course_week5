@@ -1,0 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Pacifico&family=Quicksand:wght@500;700&display=swap');
+html { background: linear-gradient(160deg, #ffe4f1 0%, #ffc2e0 50%, #ffb0d4 100%); min-height: 100%; }
+body { font-family: 'Quicksand', Arial, sans-serif; color: #5a2a45; max-width: 760px; margin: 2.5rem auto; padding: 2rem 2.2rem; line-height: 1.6; background: rgba(255, 255, 255, 0.85); border-radius: 28px; box-shadow: 0 10px 35px rgba(255, 105, 180, 0.35); border: 3px solid #ffb6d9; }
+h1 { font-family: 'Pacifico', cursive; font-weight: normal; color: #ff3d9a; font-size: 2.2rem; text-shadow: 2px 2px 0 #ffd1e8; }
+h2 { color: #e0559c; border-bottom: 2px dotted #ffb6d9; padding-bottom: 4px; margin-top: 2rem; }
+a { color: #d6247f; font-weight: 700; text-decoration: none; border-bottom: 2px solid #ffb6d9; }
+a:hover { background: #ffd1e8; border-radius: 6px; }
+.messages { background: #fff0f7; border: 3px dashed #ff69b4; border-radius: 20px; padding: 1rem; min-height: 260px; max-height: 460px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.6rem; }
+.bubble { max-width: 85%; padding: 0.5rem 0.9rem; border-radius: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble.user { align-self: flex-end; background: #ff69b4; color: white; border-bottom-right-radius: 4px; }
+.bubble.assistant { align-self: flex-start; background: white; border: 2px solid #ffb6d9; border-bottom-left-radius: 4px; }
+.bubble.error { align-self: center; background: #ffe0e0; border: 2px solid #ff8a8a; }
+.chat-form { display: flex; gap: 0.6rem; margin-top: 1rem; }
+.chat-form input { flex: 1; padding: 0.6rem 1rem; border: 3px solid #ffb6d9; border-radius: 999px; font: inherit; color: inherit; }
+.chat-form input:focus { outline: none; border-color: #ff69b4; }
+.chat-form button { padding: 0.6rem 1.4rem; background: #ff69b4; color: white; border: none; border-radius: 999px; font: inherit; font-weight: 700; cursor: pointer; }
+.chat-form button:disabled { opacity: 0.5; cursor: wait; }
+.status { color: #e0559c; min-height: 1.4rem; font-size: 0.95rem; }

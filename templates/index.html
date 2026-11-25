@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1'>
+  <title>Week 5: LLM chat</title>
+  <link rel='stylesheet' href='{{ request.script_root }}/static/style.css'>
+</head>
+<body data-base='{{ request.script_root }}'>
+  <h1>Week 5: LLM chat</h1>
+  <p>You are chatting with a language model ({{ model }}) that runs on my own cPouta server. The conversation is stored in MariaDB.</p>
+  <div id='messages' class='messages'></div>
+  <form id='chat-form' class='chat-form'>
+    <input id='message-input' type='text' maxlength='2000' placeholder='Write a message...' autocomplete='off' required>
+    <button id='send-button' type='submit'>Send</button>
+  </form>
+  <p id='status' class='status'></p>
+  <p><a href='https://github.com/saarailtanen/linux_course_week5'>Source code on GitHub</a></p>
+  <script src='{{ request.script_root }}/static/app.js'></script>
+</body>
+</html>
